@@ -15,8 +15,8 @@ import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import { useSQLiteContext } from "expo-sqlite";
 import { useListDAO } from "../db/listDAO";
 import { FontAwesome6 } from "@expo/vector-icons";
-import { useReminderDAO } from "../db/reminderDAO";
 import ReminderListItem from "../components/RenderItem";
+import { registerForPushNotificationsAsync, scheduleNotification } from "../notifications";
 
 export default function HomeScreen({ navigation }) {
   const [lists, setLists] = useState([]);
@@ -45,6 +45,7 @@ export default function HomeScreen({ navigation }) {
       };
 
       fetchLists();
+      registerForPushNotificationsAsync();
     }, [getLists, db])
   );
 

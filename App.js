@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { NavigationContainer } from "@react-navigation/native";
 import { createStackNavigator } from "@react-navigation/stack";
 import { SQLiteProvider } from "expo-sqlite";
@@ -15,11 +15,20 @@ import ReminderCard from "./screens/ReminderCard";
 import CompletedReminderScreen from "./screens/CompletedReminderScreen";
 import AllRemindersScreen from "./screens/AllRemindersScreen";
 import FlaggedRemindersScreen from "./screens/FlaggedRemindersScreen";
-
-import { useSchemaReady } from "./db/useSchemaReady"; // 👈 import this
-
+import * as Notifications from "expo-notifications";
+import { useSchemaReady } from "./db/useSchemaReady";
+import SubtaskScreen from "./screens/SubtaskScreen";
 
 const Stack = createStackNavigator();
+
+// Set up notification handler globally
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldPlaySound: true,
+    shouldSetBadge: false,
+  }),
+});
 
 function MainNavigator({ reminders, setReminders }) {
   return (
@@ -127,6 +136,15 @@ function MainNavigator({ reminders, setReminders }) {
             />
           )}
         </Stack.Screen>
+        <Stack.Screen name="Subtask">
+          {(props) => (
+            <SubtaskScreen
+              {...props}
+              reminders={reminders}
+              setReminders={setReminders}
+            />
+          )}
+        </Stack.Screen>
       </Stack.Navigator>
     </NavigationContainer>
   );
@@ -149,6 +167,16 @@ function AppContent() {
 }
 
 export default function App() {
+  useEffect(() => {
+    const subscription = Notifications.addNotificationReceivedListener(
+      (notification) => {
+        console.log("Notification received: ", notification);
+      }
+    );
+
+    return () => subscription.remove();
+  }, []);
+
   return (
     <SafeAreaProvider>
       <SafeAreaView style={{ flex: 1 }}>

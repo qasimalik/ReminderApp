@@ -11,11 +11,12 @@ import {
 } from "react-native";
 import { Picker } from "@react-native-picker/picker";
 import DateTimePicker from "@react-native-community/datetimepicker";
+import * as Notifications from "expo-notifications";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import { FontAwesome6 } from "@expo/vector-icons";
 import CustomToggleSwitch from "./CustomToggleSwitch";
-
 import { useReminderDAO } from "../db/reminderDAO";
+import { useSubReminderDAO } from "../db/subReminderDAO";
 
 export default function DetailsScreen({ navigation, route }) {
   const { reminderDraft, reminderTitle = "Reminder" } = route?.params || {};
@@ -26,6 +27,7 @@ export default function DetailsScreen({ navigation, route }) {
   const [locationEnabled, setLocationEnabled] = useState(false);
   const [flagEnabled, setFlagEnabled] = useState(false);
   const [priority, setPriority] = useState("None");
+  const [subtasks, setSubtasks] = useState([]);
 
   const [date, setDate] = useState(new Date());
   const [time, setTime] = useState(new Date());
@@ -33,6 +35,7 @@ export default function DetailsScreen({ navigation, route }) {
   const [showTimePicker, setShowTimePicker] = useState(false);
 
   const { addReminder } = useReminderDAO();
+  const { addSubReminder } = useSubReminderDAO();
 
   const showToast = (message) => {
     Platform.OS === "android"
@@ -46,26 +49,50 @@ export default function DetailsScreen({ navigation, route }) {
         list_id: id,
         title,
         note,
-        // date: dateEnabled ? date.toISOString() : ,
-        // save the date as a string but by default save today's date
-        date: dateEnabled ? date.toISOString() : new Date().toISOString(),
+        date: dateEnabled ? date.toISOString() : null,
         time: timeEnabled
           ? time.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
-          : new Date().toLocaleTimeString([], {
-              hour: "2-digit",
-              minute: "2-digit",
-            }),
+          : null,
         location: locationEnabled ? "User selected" : null,
-        tag: "general", // Placeholder for now
+        tag: "general",
         priority,
         flag: flagEnabled,
         whenMessaging: false,
         imageUri: null,
         url: null,
       });
-      console.log("Saved reminder:", newId);
+
+      // Save subtasks
+      for (const sub of subtasks) {
+        if (sub?.title?.trim()) {
+          await addSubReminder({
+            parent_id: newId,
+            title: sub.title.trim(),
+          });
+        }
+      }
+
+      if (dateEnabled && timeEnabled) {
+        const scheduledDate = new Date(date);
+        scheduledDate.setHours(time.getHours());
+        scheduledDate.setMinutes(time.getMinutes());
+        scheduledDate.setSeconds(0);
+
+        await Notifications.scheduleNotificationAsync({
+          content: {
+            title: "🔔 " + (title || "Reminder"),
+            body: note || "This is your scheduled notification.",
+            sound: true,
+            priority: Notifications.AndroidNotificationPriority.HIGH,
+          },
+          trigger: {
+            date: scheduledDate,
+          },
+        });
+      }
+
+      showToast("Reminder and subtasks saved!");
       navigation.goBack();
-      showToast("Reminder saved successfully!");
     } catch (err) {
       console.error("Error saving reminder", err);
       showToast("Error saving reminder");
@@ -76,10 +103,7 @@ export default function DetailsScreen({ navigation, route }) {
     <View style={styles.row}>
       <Text style={styles.icon}>{icon}</Text>
       <Text style={styles.label}>{label}</Text>
-      <CustomToggleSwitch
-        value={value}
-        onToggle={() => onValueChange(!value)}
-      />
+      <CustomToggleSwitch value={value} onToggle={() => onValueChange(!value)} />
     </View>
   );
 
@@ -88,10 +112,7 @@ export default function DetailsScreen({ navigation, route }) {
       <SafeAreaView style={styles.container}>
         {/* Header */}
         <View style={styles.header}>
-          <TouchableOpacity
-            onPress={() => navigation.goBack()}
-            style={styles.backButton}
-          >
+          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
             <FontAwesome6 name="chevron-left" size={18} color="#4da6ff" />
             <Text style={styles.reminderTitle}>{reminderTitle}</Text>
           </TouchableOpacity>
@@ -102,15 +123,23 @@ export default function DetailsScreen({ navigation, route }) {
         </View>
 
         <ScrollView>
-          {/* Date Picker */}
-          <TouchableOpacity
-            onPress={() => setShowDatePicker(true)}
-            style={styles.row}
-          >
-            <Text style={styles.icon}>📅</Text>
-            <Text style={styles.label}>Date</Text>
-            <Text style={styles.valueText}>{date.toDateString()}</Text>
-          </TouchableOpacity>
+          {/* Date Toggle */}
+          <SettingRow
+            label="Date"
+            value={dateEnabled}
+            onValueChange={(val) => {
+              setDateEnabled(val);
+              if (val) setShowDatePicker(true);
+            }}
+            icon="📅"
+          />
+          {dateEnabled && (
+            <View style={styles.row}>
+              <Text style={styles.icon}></Text>
+              <Text style={styles.label}>Selected Date</Text>
+              <Text style={styles.valueText}>{date.toDateString()}</Text>
+            </View>
+          )}
           {showDatePicker && (
             <DateTimePicker
               value={date}
@@ -123,20 +152,25 @@ export default function DetailsScreen({ navigation, route }) {
             />
           )}
 
-          {/* Time Picker */}
-          <TouchableOpacity
-            onPress={() => setShowTimePicker(true)}
-            style={styles.row}
-          >
-            <Text style={styles.icon}>🕒</Text>
-            <Text style={styles.label}>Time</Text>
-            <Text style={styles.valueText}>
-              {time.toLocaleTimeString([], {
-                hour: "2-digit",
-                minute: "2-digit",
-              })}
-            </Text>
-          </TouchableOpacity>
+          {/* Time Toggle */}
+          <SettingRow
+            label="Time"
+            value={timeEnabled}
+            onValueChange={(val) => {
+              setTimeEnabled(val);
+              if (val) setShowTimePicker(true);
+            }}
+            icon="🕒"
+          />
+          {timeEnabled && (
+            <View style={styles.row}>
+              <Text style={styles.icon}></Text>
+              <Text style={styles.label}>Selected Time</Text>
+              <Text style={styles.valueText}>
+                {time.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+              </Text>
+            </View>
+          )}
           {showTimePicker && (
             <DateTimePicker
               value={time}
@@ -149,30 +183,34 @@ export default function DetailsScreen({ navigation, route }) {
             />
           )}
 
-          {/* Tags navigation */}
-          <TouchableOpacity
-            style={styles.navRow}
-            onPress={() => navigation.navigate("Tags")}
-          >
+          {/* Navigation to Tags */}
+          <TouchableOpacity style={styles.navRow} onPress={() => navigation.navigate("Tags")}>
             <Text style={styles.icon}>#️⃣</Text>
             <Text style={styles.label}>Tags</Text>
           </TouchableOpacity>
 
-          {/* Toggles */}
-          <SettingRow
-            label="Location"
-            value={locationEnabled}
-            onValueChange={setLocationEnabled}
-            icon="📍"
-          />
-          <SettingRow
-            label="Flag"
-            value={flagEnabled}
-            onValueChange={setFlagEnabled}
-            icon="🚩"
-          />
+          {/* Location, Flag */}
+          <SettingRow label="Location" value={locationEnabled} onValueChange={setLocationEnabled} icon="📍" />
+          <SettingRow label="Flag" value={flagEnabled} onValueChange={setFlagEnabled} icon="🚩" />
 
-          {/* Priority Picker */}
+          {/* Subtasks */}
+          <TouchableOpacity
+            style={styles.navRow}
+            onPress={() =>
+              navigation.navigate("Subtask", {
+                initialSubtasks: subtasks,
+                onSaveSubtasks: (savedSubtasks) => {
+                  console.log("Saved subtasks:", savedSubtasks);
+                  setSubtasks(savedSubtasks)
+                },
+              })
+            }
+          >
+            <Text style={styles.icon}>📝</Text>
+            <Text style={styles.label}>Subtasks</Text>
+          </TouchableOpacity>
+
+          {/* Priority */}
           <View style={styles.dropdownRow}>
             <Text style={styles.icon}>❗</Text>
             <Text style={styles.label}>Priority</Text>

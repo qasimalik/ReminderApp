@@ -11,8 +11,10 @@ import {
   ToastAndroid,
 } from "react-native";
 import { useNavigation, useRoute } from "@react-navigation/native";
+import { Swipeable } from "react-native-gesture-handler";
 import { FontAwesome6 } from "@expo/vector-icons";
 import { useReminderDAO } from "../db/reminderDAO";
+import { useSubReminderDAO } from "../db/subReminderDAO";
 
 export default function ReminderDetailScreen() {
   const navigation = useNavigation();
@@ -20,8 +22,10 @@ export default function ReminderDetailScreen() {
   const { reminderId } = route.params;
   const { getReminderById, deleteReminderById, markReminderAsDone } =
     useReminderDAO();
+  const { getSubReminders } = useSubReminderDAO();
   const [reminder, setReminder] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [subReminders, setSubReminders] = useState([]);
 
   const showToast = (msg) => {
     Platform.OS === "android"
@@ -33,8 +37,14 @@ export default function ReminderDetailScreen() {
     const loadReminder = async () => {
       try {
         const result = await getReminderById(reminderId);
-        if (result) setReminder(result);
-        else showToast("Reminder not found");
+        if (result) {
+          setReminder(result);
+          const subtasks = await getSubReminders(reminderId);
+          setSubReminders(subtasks);
+          console.log("Subtasks:", subtasks);
+        } else {
+          showToast("Reminder not found");
+        }
       } catch (e) {
         console.error("Error loading reminder", e);
         showToast("Failed to load reminder");
@@ -58,6 +68,17 @@ export default function ReminderDetailScreen() {
 
   const handleEdit = () => {
     navigation.navigate("EditReminder", { reminderId });
+  };
+
+  const handleDeleteSubtask = async (subtaskId) => {
+    try {
+      await deleteSubReminderById(subtaskId); // you need to create this in your subReminderDAO
+      setSubReminders((prev) => prev.filter((s) => s.id !== subtaskId));
+      showToast("Subtask deleted!");
+    } catch (error) {
+      console.error("Failed to delete subtask:", error);
+      showToast("Failed to delete subtask.");
+    }
   };
 
   const handleMarkAsDone = async () => {
@@ -157,6 +178,46 @@ export default function ReminderDetailScreen() {
             </Text>
           )}
         </View>
+
+        {subReminders.length > 0 && (
+          <View style={styles.subtaskSection}>
+            <Text style={styles.subtaskHeader}>Subtasks</Text>
+            {subReminders.map((sub) => (
+              <Swipeable
+                key={sub.id}
+                renderRightActions={() => (
+                  <TouchableOpacity
+                    style={styles.deleteButton}
+                    onPress={() => handleDeleteSubtask(sub.id)}
+                  >
+                    <FontAwesome6 name="trash" size={18} color="#fff" />
+                    <Text style={styles.deleteText}>Delete</Text>
+                  </TouchableOpacity>
+                )}
+              >
+                <View style={styles.subtaskItem}>
+                  <View
+                    style={[
+                      styles.subtaskDot,
+                      { backgroundColor: sub.isDone ? "green" : "#ccc" },
+                    ]}
+                  />
+                  <Text
+                    style={[
+                      styles.subtaskText,
+                      sub.isDone && {
+                        textDecorationLine: "line-through",
+                        color: "#888",
+                      },
+                    ]}
+                  >
+                    {sub.title}
+                  </Text>
+                </View>
+              </Swipeable>
+            ))}
+          </View>
+        )}
 
         <View style={styles.createdAtBox}>
           <Text style={styles.createdAt}>
@@ -278,6 +339,51 @@ const styles = StyleSheet.create({
   badgeText: {
     color: "#fff",
     fontSize: 14,
+    fontWeight: "600",
+  },
+  subtaskSection: {
+    marginTop: 20,
+    borderTopWidth: 1,
+    borderTopColor: "#eee",
+    paddingTop: 10,
+  },
+
+  subtaskHeader: {
+    fontSize: 16,
+    fontWeight: "600",
+    marginBottom: 8,
+    color: "#222",
+  },
+
+  subtaskItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 6,
+  },
+
+  subtaskDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    marginRight: 10,
+  },
+
+  subtaskText: {
+    fontSize: 15,
+    color: "#333",
+  },
+  deleteButton: {
+    backgroundColor: "#FF3B30",
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 20,
+    marginVertical: 2,
+    borderRadius: 10,
+    flexDirection: "row",
+  },
+  deleteText: {
+    color: "#fff",
+    fontSize: 16,
     fontWeight: "600",
   },
   createdAtBox: {
